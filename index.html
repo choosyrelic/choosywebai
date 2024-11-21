@@ -93,7 +93,7 @@
             const data = await response.json();
             const botMessage = document.createElement('div');
             botMessage.classList.add('message', 'bot'); // Add bot message classes
-            botMessage.innerText = data.reply;
+            botMessage.innerText = data.reply || "Sorry, I couldn't process that request.";
 
             // Make the bot message clickable to copy the reply to clipboard
             botMessage.onclick = () => {
