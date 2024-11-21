@@ -1,9 +1,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { spawn } = require('child_process');
 const path = require('path');
 const cookieParser = require('cookie-parser'); // Add cookie-parser for reading cookies
 const rateLimit = require('express-rate-limit');
+const axios = require('axios'); // Use axios for API calls
 
 const app = express();
 
@@ -42,7 +42,7 @@ app.get('/', (req, res) => {
 });
 
 // Endpoint to handle chat messages
-app.post('/chat', (req, res) => {
+app.post('/chat', async (req, res) => {
   // Input validation
   if (!req.body.message || typeof req.body.message !== 'string') {
     return res.status(400).json({ error: 'Invalid message format' });
@@ -59,22 +59,17 @@ app.post('/chat', (req, res) => {
   const formattedMessage = `${userName}: ${userMessage}`;
   console.log(formattedMessage); // Log the formatted message
 
-  // Spawn a new process to run the Ollama AI command
-  const ollama = spawn('/usr/local/bin/ollama', ['run', 'ChoosyAI']);
+  try {
+    const response = await axios.post('https://559f-103-57-84-63.ngrok-free.app/api/generate', {
+      prompt: formattedMessage
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
 
-  let responseText = ''; // Variable to store the response from Ollama
+    const responseText = response.data.reply;
 
-  // Listen for data from the spawned process's stdout
-  ollama.stdout.on('data', (data) => {
-    responseText += data.toString(); // Append data to responseText as it streams in
-  });
-
-  // Handle process closure and send response back to client
-  ollama.on('close', (code) => {
-    if (code !== 0) {
-      return res.status(500).json({ error: 'Error running Ollama locally' });
-    }
-    
     // Store messages in history
     const conversation = {
       user: {
@@ -87,31 +82,23 @@ app.post('/chat', (req, res) => {
         timestamp: new Date().toISOString()
       }
     };
-    
+
     chatHistory.unshift(conversation);
     if (chatHistory.length > MAX_HISTORY) {
       chatHistory.pop();
     }
-    
-    console.log(`ChoosyAI: ${responseText.trim()}`);
-    res.json({ 
+
+    console.log(`Custom API: ${responseText.trim()}`);
+    res.json({
       reply: responseText.trim(),
       timestamp: conversation.ai.timestamp
     });
-  });
 
-  // Add error handling for the spawn process
-  ollama.on('error', (error) => {
-    console.error('Ollama process error:', error);
-    res.status(500).json({ error: 'Failed to start Ollama process' });
-  });
-
-  // Send the formatted message to Ollama's stdin
-  ollama.stdin.write(`${formattedMessage}\n`);
-  ollama.stdin.end();
+  } catch (error) {
+    console.error('API request error:', error);
+    res.status(500).json({ error: 'Failed to fetch response from custom API' });
+  }
 });
 
-// Start the server and listen on port 3000
-app.listen(3000, () => {
-  console.log('Server is running on http://localhost:3000');
-});
+// Start the server (port removed as per request)
+console.log('Server setup complete');
