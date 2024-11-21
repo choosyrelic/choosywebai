@@ -41,7 +41,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Direct communication with Ollama
+// Chat endpoint
 app.post('/chat', async (req, res) => {
   if (!req.body.message || typeof req.body.message !== 'string') {
     return res.status(400).json({ error: 'Invalid message format' });
@@ -55,14 +55,11 @@ app.post('/chat', async (req, res) => {
   const timestamp = new Date().toISOString();
 
   try {
-    // Direct communication with Ollama
-    const ollamaResponse = await axios.post('http://localhost:11434/api/generate', {
-      model: 'llama2',
-      prompt: `${userName}: ${userMessage}\nAssistant:`,
-      stream: false
+    // Send request to local server
+    const response = await axios.post('http://localhost:3001/process-chat', {
+      message: userMessage,
+      userName
     });
-
-    const aiReply = ollamaResponse.data.response;
 
     const conversation = {
       user: {
@@ -71,8 +68,8 @@ app.post('/chat', async (req, res) => {
         timestamp
       },
       ai: {
-        message: aiReply,
-        timestamp: new Date().toISOString()
+        message: response.data.reply,
+        timestamp: response.data.timestamp
       }
     };
 
@@ -82,10 +79,10 @@ app.post('/chat', async (req, res) => {
     }
 
     console.log(`Message from ${userName}: ${userMessage}`);
-    console.log(`AI response: ${aiReply}`);
+    console.log(`AI response: ${response.data.reply}`);
 
     res.json({
-      reply: aiReply,
+      reply: response.data.reply,
       timestamp: conversation.ai.timestamp
     });
 
@@ -99,4 +96,4 @@ app.post('/chat', async (req, res) => {
 });
 
 // Export the app for Vercel
-module.exports = app; 
+module.exports = app;
