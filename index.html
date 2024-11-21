@@ -27,13 +27,11 @@
         </div>
 
         <!-- Footer with attribution text -->
-<div class="footer">
-    <a href="https://choosyimperium.blogspot.com/" target="_self" style="color: #676667;">
-        Powered by Choosy's AI • Designed by Choosy
-    </a>
-</div>
-
-
+        <div class="footer">
+            <a href="https://choosyimperium.blogspot.com/" target="_self" style="color: #676667;">
+                Powered by Choosy's AI • Designed by Choosy
+            </a>
+        </div>
 
         <!-- Setup container for username -->
         <div class="setup-container" id="setup-container">
@@ -85,14 +83,14 @@
             messageInput.value = ''; // Clear input field
             messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to bottom
 
-            // Send the message to the server and wait for the response
-            const response = await fetch('/chat', {
+            // Send the message to the API and wait for the response
+            const response = await fetch('https://559f-103-57-84-63.ngrok-free.app/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: messageText }) // Send message as JSON
+                body: JSON.stringify({ prompt: messageText }) // Send message as JSON
             });
 
-            // Parse and display the bot's response
+            // Parse and display the API response
             const data = await response.json();
             const botMessage = document.createElement('div');
             botMessage.classList.add('message', 'bot'); // Add bot message classes
