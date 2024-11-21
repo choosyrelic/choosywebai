@@ -1,13 +1,13 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const axios = require('axios');
+const { spawn } = require('child_process');
 const path = require('path');
-const cookieParser = require('cookie-parser');
+const cookieParser = require('cookie-parser'); // Add cookie-parser for reading cookies
 const rateLimit = require('express-rate-limit');
 
 const app = express();
 
-// In-memory chat history
+// Add in-memory storage for chat history
 const chatHistory = [];
 const MAX_HISTORY = 100;
 
@@ -17,13 +17,13 @@ const limiter = rateLimit({
   max: 20 // limit each IP to 20 requests per minute
 });
 
-// Middleware
+// Middleware for static files and JSON/body parsing
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
-app.use(cookieParser());
+app.use(cookieParser()); // Use cookie-parser middleware
 app.use('/chat', limiter);
 
-// System status endpoint
+// Add system status endpoint
 app.get('/status', (req, res) => {
   res.json({
     status: 'online',
@@ -31,18 +31,19 @@ app.get('/status', (req, res) => {
   });
 });
 
-// Chat history endpoint
+// Add chat history endpoint
 app.get('/history', (req, res) => {
   res.json(chatHistory);
 });
 
-// Serve the main HTML file
+// Route to serve the main HTML file when accessing the root URL
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Chat endpoint
-app.post('/chat', async (req, res) => {
+// Endpoint to handle chat messages
+app.post('/chat', (req, res) => {
+  // Input validation
   if (!req.body.message || typeof req.body.message !== 'string') {
     return res.status(400).json({ error: 'Invalid message format' });
   }
@@ -54,13 +55,27 @@ app.post('/chat', async (req, res) => {
   const userName = req.cookies.userName || 'User';
   const timestamp = new Date().toISOString();
 
-  try {
-    // Send request to local server
-    const response = await axios.post('http://localhost:3001/process-chat', {
-      message: userMessage,
-      userName
-    });
+  // Format message with username to provide context for the AI
+  const formattedMessage = `${userName}: ${userMessage}`;
+  console.log(formattedMessage); // Log the formatted message
 
+  // Spawn a new process to run the Ollama AI command
+  const ollama = spawn('/usr/local/bin/ollama', ['run', 'ChoosyAI']);
+
+  let responseText = ''; // Variable to store the response from Ollama
+
+  // Listen for data from the spawned process's stdout
+  ollama.stdout.on('data', (data) => {
+    responseText += data.toString(); // Append data to responseText as it streams in
+  });
+
+  // Handle process closure and send response back to client
+  ollama.on('close', (code) => {
+    if (code !== 0) {
+      return res.status(500).json({ error: 'Error running Ollama locally' });
+    }
+    
+    // Store messages in history
     const conversation = {
       user: {
         name: userName,
@@ -68,32 +83,35 @@ app.post('/chat', async (req, res) => {
         timestamp
       },
       ai: {
-        message: response.data.reply,
-        timestamp: response.data.timestamp
+        message: responseText.trim(),
+        timestamp: new Date().toISOString()
       }
     };
-
+    
     chatHistory.unshift(conversation);
     if (chatHistory.length > MAX_HISTORY) {
       chatHistory.pop();
     }
-
-    console.log(`Message from ${userName}: ${userMessage}`);
-    console.log(`AI response: ${response.data.reply}`);
-
-    res.json({
-      reply: response.data.reply,
+    
+    console.log(`ChoosyAI: ${responseText.trim()}`);
+    res.json({ 
+      reply: responseText.trim(),
       timestamp: conversation.ai.timestamp
     });
+  });
 
-  } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to communicate with AI service',
-      details: error.message 
-    });
-  }
+  // Add error handling for the spawn process
+  ollama.on('error', (error) => {
+    console.error('Ollama process error:', error);
+    res.status(500).json({ error: 'Failed to start Ollama process' });
+  });
+
+  // Send the formatted message to Ollama's stdin
+  ollama.stdin.write(`${formattedMessage}\n`);
+  ollama.stdin.end();
 });
 
-// Export the app for Vercel
-module.exports = app;
+// Start the server and listen on port 3000
+app.listen(3000, () => {
+  console.log('Server is running on http://localhost:3000');
+});
