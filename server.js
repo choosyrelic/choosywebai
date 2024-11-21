@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const cookieParser = require('cookie-parser'); // Add cookie-parser for reading cookies
 const rateLimit = require('express-rate-limit');
-const axios = require('axios'); // Use axios for API calls
+const { exec } = require('child_process'); // Use exec to run curl command
 
 const app = express();
 
@@ -42,7 +42,7 @@ app.get('/', (req, res) => {
 });
 
 // Endpoint to handle chat messages
-app.post('/chat', async (req, res) => {
+app.post('/chat', (req, res) => {
   // Input validation
   if (!req.body.message || typeof req.body.message !== 'string') {
     return res.status(400).json({ error: 'Invalid message format' });
@@ -59,16 +59,17 @@ app.post('/chat', async (req, res) => {
   const formattedMessage = `${userName}: ${userMessage}`;
   console.log(formattedMessage); // Log the formatted message
 
-  try {
-    const response = await axios.post('https://559f-103-57-84-63.ngrok-free.app/api/generate', {
-      prompt: formattedMessage
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+  // Construct curl command
+  const curlCommand = `curl -X POST https://559f-103-57-84-63.ngrok-free.app/api/generate -H "Content-Type: application/json" -d '{"prompt": "${formattedMessage}"}'`;
 
-    const responseText = response.data.reply;
+  // Execute the curl command
+  exec(curlCommand, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`curl error: ${error}`);
+      return res.status(500).json({ error: 'Failed to fetch response from custom API' });
+    }
+
+    const responseText = stdout.trim();
 
     // Store messages in history
     const conversation = {
@@ -78,7 +79,7 @@ app.post('/chat', async (req, res) => {
         timestamp
       },
       ai: {
-        message: responseText.trim(),
+        message: responseText,
         timestamp: new Date().toISOString()
       }
     };
@@ -88,16 +89,12 @@ app.post('/chat', async (req, res) => {
       chatHistory.pop();
     }
 
-    console.log(`Custom API: ${responseText.trim()}`);
+    console.log(`Custom API: ${responseText}`);
     res.json({
-      reply: responseText.trim(),
+      reply: responseText,
       timestamp: conversation.ai.timestamp
     });
-
-  } catch (error) {
-    console.error('API request error:', error);
-    res.status(500).json({ error: 'Failed to fetch response from custom API' });
-  }
+  });
 });
 
 // Start the server (port removed as per request)
