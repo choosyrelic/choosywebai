@@ -1,100 +1,117 @@
-const messagesContainer = document.getElementById('messages'); // Message display container
-const setupContainer = document.getElementById('setup-container'); // Setup container
-const usernameDisplay = document.getElementById('usernameDisplay'); // Username display container
-const usernameText = document.getElementById('usernameText'); // Element to display the username
-const profileIcon = document.getElementById('profile-icon'); // Profile icon
+const express = require('express');
+const bodyParser = require('body-parser');
+const { spawn } = require('child_process');
+const path = require('path');
+const cookieParser = require('cookie-parser'); // Add cookie-parser for reading cookies
+const rateLimit = require('express-rate-limit');
 
-// Function to get a cookie by name
-function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift(); // Return cookie value
-}
+const app = express();
 
-// Check if user has a saved username in cookies, if not, show the setup container
-document.addEventListener('DOMContentLoaded', () => {
-    const userName = getCookie('userName'); // Retrieve username from cookies
-    if (!userName) {
-        setupContainer.style.display = 'block'; // Show the setup container if no username cookie
-    } else {
-        usernameText.innerText = userName; // Display username
-        alert(`Welcome back, ${userName}!`); // Welcome back message
-    }
+// Add in-memory storage for chat history
+const chatHistory = [];
+const MAX_HISTORY = 100;
+
+// Configure rate limiting
+const limiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20 // limit each IP to 20 requests per minute
 });
 
-// Function to send the user's message and display the response
-const sendMessage = async () => {
-    const messageInput = document.getElementById('message');
-    const messageText = messageInput.value.trim(); // Get trimmed message input
-    if (!messageText) return; // Exit if the input is empty
+// Middleware for static files and JSON/body parsing
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.json());
+app.use(cookieParser()); // Use cookie-parser middleware
+app.use('/chat', limiter);
 
-    // Create and display the user's message
-    const userMessage = document.createElement('div');
-    userMessage.classList.add('message', 'user'); // Add user message classes
-    userMessage.innerText = messageText;
-    messagesContainer.appendChild(userMessage); // Append user message to container
-    messageInput.value = ''; // Clear input field
-    messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to bottom
+// Add system status endpoint
+app.get('/status', (req, res) => {
+  res.json({
+    status: 'online',
+    timestamp: new Date().toISOString()
+  });
+});
 
-    // Send the message to the server and wait for the response
-    const response = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: messageText }) // Send message as JSON
-    });
+// Add chat history endpoint
+app.get('/history', (req, res) => {
+  res.json(chatHistory);
+});
 
-    // Parse and display the bot's response
-    const data = await response.json();
-    const botMessage = document.createElement('div');
-    botMessage.classList.add('message', 'bot'); // Add bot message classes
-    botMessage.innerText = data.reply;
+// Route to serve the main HTML file when accessing the root URL
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-    // Make the bot message clickable to copy the reply to clipboard
-    botMessage.onclick = () => {
-        navigator.clipboard.writeText(data.reply); // Copy reply text to clipboard
+// Endpoint to handle chat messages
+app.post('/chat', (req, res) => {
+  // Input validation
+  if (!req.body.message || typeof req.body.message !== 'string') {
+    return res.status(400).json({ error: 'Invalid message format' });
+  }
+  if (req.body.message.length > 500) {
+    return res.status(400).json({ error: 'Message too long (max 500 characters)' });
+  }
 
-        // Display a success message after copying
-        const copySuccessMessage = document.createElement('div');
-        copySuccessMessage.innerText = 'Copied!';
-        copySuccessMessage.classList.add('copy-success');
-        botMessage.appendChild(copySuccessMessage); // Append success message to bot message
+  const userMessage = req.body.message.trim();
+  const userName = req.cookies.userName || 'User';
+  const timestamp = new Date().toISOString();
 
-        // Remove the success message after 1.5 seconds
-        setTimeout(() => {
-            botMessage.removeChild(copySuccessMessage);
-        }, 1500);
+  // Format message with username to provide context for the AI
+  const formattedMessage = `${userName}: ${userMessage}`;
+  console.log(formattedMessage); // Log the formatted message
+
+  // Spawn a new process to run the Ollama AI command
+  const ollama = spawn('/usr/local/bin/ollama', ['run', 'ChoosyAI']);
+
+  let responseText = ''; // Variable to store the response from Ollama
+
+  // Listen for data from the spawned process's stdout
+  ollama.stdout.on('data', (data) => {
+    responseText += data.toString(); // Append data to responseText as it streams in
+  });
+
+  // Handle process closure and send response back to client
+  ollama.on('close', (code) => {
+    if (code !== 0) {
+      return res.status(500).json({ error: 'Error running Ollama locally' });
+    }
+    
+    // Store messages in history
+    const conversation = {
+      user: {
+        name: userName,
+        message: userMessage,
+        timestamp
+      },
+      ai: {
+        message: responseText.trim(),
+        timestamp: new Date().toISOString()
+      }
     };
-
-    messagesContainer.appendChild(botMessage); // Append bot message to container
-    messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to show the new message
-};
-
-// Event listeners for sending messages
-document.getElementById('send-btn').addEventListener('click', sendMessage); // On send button click
-document.getElementById('message').addEventListener('keypress', function (e) {
-    if (e.key === 'Enter') sendMessage(); // On Enter key press
-});
-
-// Submit button functionality for setup
-document.getElementById('submit-btn').addEventListener('click', function() {
-    const username = document.getElementById('username').value; // Get username input
-    if (username) {
-        document.cookie = `userName=${username}; path=/; max-age=${60 * 60 * 24 * 365}`; // Save username as cookie for 1 year
-        setupContainer.style.display = 'none'; // Close the setup container
-        usernameText.innerText = username; // Display the entered username
-        usernameDisplay.style.display = 'block'; // Show username display
-        alert(`Welcome, ${username}!`); // Display welcome message
-    } else {
-        alert('Please enter your name'); // Prompt if no name is entered
+    
+    chatHistory.unshift(conversation);
+    if (chatHistory.length > MAX_HISTORY) {
+      chatHistory.pop();
     }
+    
+    console.log(`ChoosyAI: ${responseText.trim()}`);
+    res.json({ 
+      reply: responseText.trim(),
+      timestamp: conversation.ai.timestamp
+    });
+  });
+
+  // Add error handling for the spawn process
+  ollama.on('error', (error) => {
+    console.error('Ollama process error:', error);
+    res.status(500).json({ error: 'Failed to start Ollama process' });
+  });
+
+  // Send the formatted message to Ollama's stdin
+  ollama.stdin.write(`${formattedMessage}\n`);
+  ollama.stdin.end();
 });
 
-// Function to close the username display
-function closeUsernameDisplay() {
-    usernameDisplay.style.display = 'none'; // Hide the container
-}
-
-// Show username display when profile icon is clicked
-profileIcon.addEventListener('click', () => {
-    usernameDisplay.style.display = 'block'; // Show the username display
+// Start the server and listen on port 3000
+app.listen(3000, () => {
+  console.log('Server is running on http://localhost:3000');
 });
