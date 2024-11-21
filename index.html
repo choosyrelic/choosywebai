@@ -4,139 +4,150 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Choosy AI</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css"> <!-- Link to external stylesheet -->
 </head>
 <body>
-    <!-- Main structure remains the same -->
+    <!-- Main chat container for the interface -->
     <div class="chat-container">
-        <!-- Previous HTML structure remains unchanged until the script tag -->
+        <!-- Header with title and profile icon -->
+        <div class="header">
+            <span class="header-title">Choosy AI</span>
+            <img src="profile-icon.png" alt="Profile" class="profile-icon" id="profile-icon" style="border-radius: 200px; cursor: pointer;"> <!-- Profile icon -->
+        </div>
+
+        <!-- Message display area -->
+        <div class="messages" id="messages"></div>
+
+        <!-- Input area for typing messages -->
+        <div class="chat-input">
+            <input type="text" id="message" placeholder="Type a message..." required> <!-- Text input for user message -->
+            <button type="button" id="send-btn">
+                <img src="check-mark.png" alt="Send" class="send-img"> <!-- Send button icon -->
+            </button>
+        </div>
+
+        <!-- Footer with attribution text -->
+<div class="footer">
+    <a href="https://choosyimperium.blogspot.com/" target="_self" style="color: #676667;">
+        Powered by Choosy's AI • Designed by Choosy
+    </a>
+</div>
+
+
+
+        <!-- Setup container for username -->
+        <div class="setup-container" id="setup-container">
+            <h1>Welcome to Choosy AI</h1>
+            <p>Please enter your name:</p>
+            <input type="text" id="username" placeholder="Your Name" required> <!-- Input for username -->
+            <button id="submit-btn">Submit</button> <!-- Submit button -->
+        </div>
+
+        <!-- Container for showing the username, initially hidden -->
+        <div class="username-display" id="usernameDisplay" style="display: none;">
+            <button class="close-btn" onclick="closeUsernameDisplay()">✖</button> <!-- Close button -->
+            <h1 id="usernameText">Your Username</h1>
+        </div>
     </div>
 
     <script>
-        const messagesContainer = document.getElementById('messages');
-        let currentUsername = '';
+        const messagesContainer = document.getElementById('messages'); // Message display container
 
+        // Function to get a cookie by name
         function getCookie(name) {
             const value = `; ${document.cookie}`;
             const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
+            if (parts.length === 2) return parts.pop().split(';').shift(); // Return cookie value
         }
 
+        // Check if user has a saved username in cookies, if not, show the setup container
         document.addEventListener('DOMContentLoaded', () => {
-            const userName = getCookie('userName');
+            const userName = getCookie('userName'); // Retrieve username from cookies
             if (!userName) {
-                document.getElementById('setup-container').style.display = 'block';
+                document.getElementById('setup-container').style.display = 'block'; // Show the setup container if no username cookie
             } else {
-                currentUsername = userName;
-                document.getElementById('usernameText').innerText = userName;
-                alert(`Welcome back, ${userName}!`);
+                document.getElementById('usernameText').innerText = userName; // Display username
+                alert(`Welcome back, ${userName}!`); // Welcome back message
             }
         });
 
+        // Function to send the user's message and display the response
         const sendMessage = async () => {
             const messageInput = document.getElementById('message');
-            const messageText = messageInput.value.trim();
-            if (!messageText) return;
+            const messageText = messageInput.value.trim(); // Get trimmed message input
+            if (!messageText) return; // Exit if the input is empty
 
-            // Create and display user message
+            // Create and display the user's message
             const userMessage = document.createElement('div');
-            userMessage.classList.add('message', 'user');
+            userMessage.classList.add('message', 'user'); // Add user message classes
             userMessage.innerText = messageText;
-            messagesContainer.appendChild(userMessage);
-            messageInput.value = '';
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesContainer.appendChild(userMessage); // Append user message to container
+            messageInput.value = ''; // Clear input field
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to bottom
 
-            // Add loading indicator
-            const loadingDiv = document.createElement('div');
-            loadingDiv.classList.add('message', 'loading');
-            loadingDiv.innerText = 'AI is thinking...';
-            messagesContainer.appendChild(loadingDiv);
+            // Send the message to the server and wait for the response
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: messageText }) // Send message as JSON
+            });
 
-            try {
-                // Send message to local server
-                const response = await fetch('http://localhost:3001/process-chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        message: messageText,
-                        userName: currentUsername || 'User'
-                    })
-                });
+            // Parse and display the bot's response
+            const data = await response.json();
+            const botMessage = document.createElement('div');
+            botMessage.classList.add('message', 'bot'); // Add bot message classes
+            botMessage.innerText = data.reply;
 
-                // Remove loading indicator
-                messagesContainer.removeChild(loadingDiv);
+            // Make the bot message clickable to copy the reply to clipboard
+            botMessage.onclick = () => {
+                navigator.clipboard.writeText(data.reply); // Copy reply text to clipboard
 
-                if (!response.ok) {
-                    throw new Error('Failed to get response from server');
-                }
+                // Display a success message after copying
+                const copySuccessMessage = document.createElement('div');
+                copySuccessMessage.innerText = 'Copied!';
+                copySuccessMessage.classList.add('copy-success');
+                botMessage.appendChild(copySuccessMessage); // Append success message to bot message
 
-                const data = await response.json();
+                // Remove the success message after 1.5 seconds
+                setTimeout(() => {
+                    botMessage.removeChild(copySuccessMessage);
+                }, 1500);
+            };
 
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                // Create and display bot message
-                const botMessage = document.createElement('div');
-                botMessage.classList.add('message', 'bot');
-                botMessage.innerText = data.reply;
-
-                // Make message copyable
-                botMessage.onclick = () => {
-                    navigator.clipboard.writeText(botMessage.innerText);
-                    const copySuccessMessage = document.createElement('div');
-                    copySuccessMessage.innerText = 'Copied!';
-                    copySuccessMessage.classList.add('copy-success');
-                    botMessage.appendChild(copySuccessMessage);
-                    setTimeout(() => {
-                        botMessage.removeChild(copySuccessMessage);
-                    }, 1500);
-                };
-
-                messagesContainer.appendChild(botMessage);
-
-            } catch (error) {
-                // Remove loading indicator if it exists
-                if (loadingDiv.parentNode) {
-                    messagesContainer.removeChild(loadingDiv);
-                }
-
-                // Display error message
-                const errorMessage = document.createElement('div');
-                errorMessage.classList.add('message', 'error');
-                errorMessage.innerText = `Error: ${error.message}`;
-                messagesContainer.appendChild(errorMessage);
-                console.error('Error:', error);
-            }
-
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesContainer.appendChild(botMessage); // Append bot message to container
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to show the new message
         };
 
-        // Event listeners
-        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        // Event listeners for sending messages
+        document.getElementById('send-btn').addEventListener('click', sendMessage); // On send button click
         document.getElementById('message').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendMessage();
+            if (e.key === 'Enter') sendMessage(); // On Enter key press
         });
 
+        // Submit button functionality for setup
         document.getElementById('submit-btn').addEventListener('click', function() {
-            const username = document.getElementById('username').value;
+            const username = document.getElementById('username').value; // Get username input
             if (username) {
-                currentUsername = username;
-                document.cookie = `userName=${username}; path=/; max-age=${60 * 60 * 24 * 365}`;
-                document.getElementById('setup-container').style.display = 'none';
-                document.getElementById('usernameText').innerText = username;
-                document.getElementById('usernameDisplay').style.display = 'block';
-                alert(`Welcome, ${username}!`);
+                document.cookie = `userName=${username}; path=/; max-age=${60 * 60 * 24 * 365}`; // Save username as cookie for 1 year
+                document.getElementById('setup-container').style.display = 'none'; // Close the setup container
+                document.getElementById('usernameText').innerText = username; // Display the entered username
+                document.getElementById('usernameDisplay').style.display = 'block'; // Show username display
+                alert(`Welcome, ${username}!`); // Display welcome message
             } else {
-                alert('Please enter your name');
+                alert('Please enter your name'); // Prompt if no name is entered
             }
         });
 
+        // Function to close the username display
+        function closeUsernameDisplay() {
+            const usernameDisplay = document.getElementById('usernameDisplay');
+            usernameDisplay.style.display = 'none'; // Hide the container
+        }
+
+        // Show username display when profile icon is clicked
         document.getElementById('profile-icon').addEventListener('click', () => {
             const usernameDisplay = document.getElementById('usernameDisplay');
-            usernameDisplay.style.display = 'block';
+            usernameDisplay.style.display = 'block'; // Show the username display
         });
     </script>
 </body>
