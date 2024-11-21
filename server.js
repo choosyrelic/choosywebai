@@ -11,9 +11,6 @@ const app = express();
 const chatHistory = [];
 const MAX_HISTORY = 100;
 
-// Base URL for development tunnel
-const LOCAL_SERVER_URL = 'https://mkvcj2fz-3001.inc1.devtunnels.ms';
-
 // Configure rate limiting
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
@@ -30,8 +27,7 @@ app.use('/chat', limiter);
 app.get('/status', (req, res) => {
   res.json({
     status: 'online',
-    timestamp: new Date().toISOString(),
-    localServerURL: LOCAL_SERVER_URL
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -45,7 +41,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Chat endpoint
+// Direct communication with Ollama
 app.post('/chat', async (req, res) => {
   if (!req.body.message || typeof req.body.message !== 'string') {
     return res.status(400).json({ error: 'Invalid message format' });
@@ -59,10 +55,14 @@ app.post('/chat', async (req, res) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const response = await axios.post(`${LOCAL_SERVER_URL}/process-chat`, {
-      message: userMessage,
-      userName
+    // Direct communication with Ollama
+    const ollamaResponse = await axios.post('http://localhost:11434/api/generate', {
+      model: 'llama2',
+      prompt: `${userName}: ${userMessage}\nAssistant:`,
+      stream: false
     });
+
+    const aiReply = ollamaResponse.data.response;
 
     const conversation = {
       user: {
@@ -71,8 +71,8 @@ app.post('/chat', async (req, res) => {
         timestamp
       },
       ai: {
-        message: response.data.reply,
-        timestamp: response.data.timestamp
+        message: aiReply,
+        timestamp: new Date().toISOString()
       }
     };
 
@@ -81,18 +81,22 @@ app.post('/chat', async (req, res) => {
       chatHistory.pop();
     }
 
+    console.log(`Message from ${userName}: ${userMessage}`);
+    console.log(`AI response: ${aiReply}`);
+
     res.json({
-      reply: response.data.reply,
+      reply: aiReply,
       timestamp: conversation.ai.timestamp
     });
+
   } catch (error) {
-    console.error('Error communicating with local server:', error);
-    res.status(500).json({ error: 'Failed to communicate with AI service' });
+    console.error('Error:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to communicate with AI service',
+      details: error.message 
+    });
   }
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`GitHub server running on port ${PORT}`);
-  console.log(`Connected to local server at ${LOCAL_SERVER_URL}`);
-}); 
+// Export the app for Vercel
+module.exports = app; 
